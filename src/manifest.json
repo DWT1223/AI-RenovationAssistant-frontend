@@ -1,0 +1,45 @@
+{
+  "name": "装修AI助手",
+  "appid": "__UNI__XXXXXXX",
+  "description": "一站式解决装修全流程需求的AI助手小程序",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wx0000000000000000",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "postcss": true,
+      "minified": true
+    },
+    "usingComponents": true,
+    "permission": {
+      "scope.userLocation": {
+        "desc": "用于获取您的位置信息"
+      }
+    },
+    "requiredPrivateInfos": ["getLocation"]
+  },
+  "h5": {
+    "router": {
+      "mode": "hash",
+      "base": "/"
+    },
+    "devServer": {
+      "port": 5173,
+      "proxy": {
+        "/api": {
+          "target": "http://localhost:8000",
+          "changeOrigin": true
+        },
+        "^/minimax": {
+          "target": "https://minnimax.chat",
+          "changeOrigin": true,
+          "secure": true,
+          "rewrite": (path) => path.replace(/^\/minimax/, "")
+        }
+      }
+    }
+  }
+}
