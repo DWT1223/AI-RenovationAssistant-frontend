@@ -103,6 +103,18 @@
       }
     },
     {
+      "path": "pages/ai/chat",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/ai/chatHistory",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/style/list",
       "style": {
         "navigationStyle": "custom"

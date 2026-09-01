@@ -53,7 +53,7 @@
                 <text class="btn-icon">💾</text>
                 <text class="btn-text">保存图片</text>
               </view>
-              <view class="action-btn" @click="regeneratePrompt">
+              <view class="action-btn" @click="regeneratePrompt" v-if="!id">
                 <text class="btn-icon">🔄</text>
                 <text class="btn-text">重新生成</text>
               </view>
@@ -109,7 +109,8 @@ export default {
       loadingText: 'AI 分析中',
       style: '',
       room: '',
-      requirement: ''
+      requirement: '',
+        id:''
     }
   },
   computed: {
@@ -141,6 +142,7 @@ export default {
   onLoad(options) {
     // 检查是否有 ID 参数（从历史记录进入）
     if (options.id) {
+        this.id=options.id
       this.loadFromHistory(options.id)
       return
     }
@@ -252,27 +254,85 @@ export default {
 
       uni.showLoading({ title: '保存中...' })
 
+      // base64 图片：先写入临时文件再保存到相册
+      if (this.generatedImage.startsWith('data:')) {
+        this.saveBase64Image(this.generatedImage)
+        return
+      }
+
       // 如果是 Agnes CDN 的图片，需要通过代理下载以解决跨域问题
       if (this.generatedImage.includes('platform-outputs.agnes-ai')) {
         const proxyUrl = this.generatedImage.replace('https://platform-outputs.agnes-ai.space', '/agnes-cdn')
         this.downloadAndSave(proxyUrl)
-      } else if (this.generatedImage.startsWith('http')) {
+        return
+      }
+
+      if (this.generatedImage.startsWith('http')) {
         this.downloadAndSave(this.generatedImage)
-      } else {
-        // 本地图片直接保存
+        return
+      }
+
+      // 本地文件路径（wxfile:// 等）
+      uni.saveImageToPhotosAlbum({
+        filePath: this.generatedImage,
+        success: () => {
+          uni.hideLoading()
+          uni.showToast({ title: '保存成功', icon: 'success' })
+        },
+        fail: (err) => {
+          uni.hideLoading()
+          console.error('保存失败:', err)
+          uni.showToast({ title: '保存失败', icon: 'none' })
+        }
+      })
+    },
+    saveBase64Image(dataUrl) {
+      // H5：通过 <a download> 触发浏览器下载
+      // #ifdef H5
+      uni.hideLoading()
+      this.saveImageH5(dataUrl)
+      return
+      // #endif
+
+      // 小程序 / App：先把 base64 写入临时文件，再调用 saveImageToPhotosAlbum
+      // #ifndef H5
+      try {
+        const base64Data = dataUrl.split(',')[1]
+        if (!base64Data) throw new Error('base64 数据为空')
+
+        const extMatch = dataUrl.match(/data:image\/(\w+);base64/)
+        const ext = extMatch ? (extMatch[1] === 'jpeg' ? 'jpg' : extMatch[1]) : 'png'
+        const fileName = `ai_temp_${Date.now()}.${ext}`
+        const fs = uni.getFileSystemManager()
+
+        // #ifdef MP-WEIXIN
+        const tempPath = `${wx.env.USER_DATA_PATH}/${fileName}`
+        // #endif
+
+        // #ifdef APP-PLUS
+        const tempPath = `_doc/${fileName}`
+        // #endif
+
+        fs.writeFileSync(tempPath, base64Data, 'base64')
+
         uni.saveImageToPhotosAlbum({
-          filePath: this.generatedImage,
+          filePath: tempPath,
           success: () => {
             uni.hideLoading()
             uni.showToast({ title: '保存成功', icon: 'success' })
           },
           fail: (err) => {
+            console.error('保存到相册失败:', err)
             uni.hideLoading()
-            console.error('保存失败:', err)
             uni.showToast({ title: '保存失败', icon: 'none' })
           }
         })
+      } catch (e) {
+        console.error('保存 base64 图片失败:', e)
+        uni.hideLoading()
+        uni.showToast({ title: '保存失败', icon: 'none' })
       }
+      // #endif
     },
     downloadAndSave(url) {
       uni.downloadFile({

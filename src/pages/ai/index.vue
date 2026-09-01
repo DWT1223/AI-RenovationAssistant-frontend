@@ -79,25 +79,248 @@
         <EmptyState v-if="history.length === 0" text="暂无生成记录" />
       </view>
     </view>
+
+    <!-- 对话历史 -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">问答对话</text>
+        <text class="section-more new-btn" @click="newChat">+ 新开对话</text>
+      </view>
+      <view class="session-list">
+        <view
+          v-for="s in chatSessions"
+          :key="s.id"
+          class="session-item"
+          @click="continueChat(s.id)"
+        >
+          <view class="session-icon">💬</view>
+          <view class="session-info">
+            <text class="session-title">{{ s.title || '新对话' }}</text>
+            <text class="session-meta">
+              {{ sessionMessageCount(s) }}条消息 · {{ formatRelativeTime(s.updatedAt) }}
+            </text>
+          </view>
+          <view class="session-delete" @click.stop="confirmDeleteSession(s)">
+            <text class="delete-icon">🗑</text>
+          </view>
+        </view>
+        <EmptyState v-if="chatSessions.length === 0" text="暂无对话记录，点击右上角开启新对话" />
+      </view>
+    </view>
+
+    <!-- 悬浮 AI 问答按钮（可拖动+边缘吸附） -->
+    <view
+      class="float-bot"
+      :style="floatStyle"
+      @touchstart="onTouchStart"
+      @touchmove.stop="onTouchMove"
+      @touchend="onTouchEnd"
+    >
+      <view class="float-pulse"></view>
+      <text class="float-icon">🤖</text>
+    </view>
   </view>
 </template>
 
 <script>
 import EmptyState from '../../components/common/EmptyState.vue'
 import { getAIRecords } from '../../api/ai'
+import {
+  getChatSessions as fetchBackendSessions,
+  deleteChatSession as deleteBackendSession
+} from '../../api/chat'
 import { formatRelativeTime } from '../../utils/format'
+
+const LOCAL_SESSIONS_KEY = 'aiChatSessions'
 
 export default {
   components: { EmptyState },
   data() {
     return {
-      history: []
+      history: [],
+      chatSessions: [],
+      // 悬浮按钮位置（px 单位，因为 touch 事件 clientX/Y 是 px）
+      floatPos: { x: 0, y: 0 },
+      // 标记是否处于拖动中（用于区分点击和拖动）
+      floatDragging: false,
+      // 触摸起始位置与按钮位置偏差（px）
+      floatOffset: { x: 0, y: 0 },
+      // 触摸起始点（px），用于计算是否移动过
+      floatTouchStart: { x: 0, y: 0 },
+      // 屏幕尺寸（px）
+      sysInfo: { width: 375, height: 667 }
+    }
+  },
+  computed: {
+    floatStyle() {
+      return `transform: translate(${this.floatPos.x}px, ${this.floatPos.y}px); transition: ${this.floatDragging ? 'none' : 'transform 0.3s ease'};`
     }
   },
   onLoad() {
     this.loadHistory()
+    this.loadChatSessions()
+    this.initFloatPos()
+  },
+  onShow() {
+    // 从 chat 页面返回时刷新对话历史
+    this.loadChatSessions()
   },
   methods: {
+    initFloatPos() {
+      try {
+        this.sysInfo = uni.getSystemInfoSync()
+      } catch (e) {}
+      // 默认右下角，避开 tabbar（约 100px）
+      const btnSize = 50 // 100rpx ≈ 50px
+      const margin = 24
+      const bottomSafe = (this.sysInfo.windowHeight || 667) - btnSize - 100
+      this.floatPos = {
+        x: (this.sysInfo.windowWidth || 375) - btnSize - margin,
+        y: bottomSafe
+      }
+    },
+    onTouchStart(e) {
+      const touch = e.touches[0]
+      this.floatTouchStart = { x: touch.clientX, y: touch.clientY }
+      this.floatOffset = {
+        x: touch.clientX - this.floatPos.x,
+        y: touch.clientY - this.floatPos.y
+      }
+      this.floatDragging = true
+    },
+    onTouchMove(e) {
+      const touch = e.touches[0]
+      let x = touch.clientX - this.floatOffset.x
+      let y = touch.clientY - this.floatOffset.y
+
+      const btnSize = 50
+      const margin = 10
+      const maxX = (this.sysInfo.windowWidth || 375) - btnSize - margin
+      const minX = margin
+      // 顶部留出状态栏空间，底部留出 tabbar 空间
+      const minY = (this.sysInfo.statusBarHeight || 20) + 60
+      const maxY = (this.sysInfo.windowHeight || 667) - btnSize - 120
+
+      if (x < minX) x = minX
+      if (x > maxX) x = maxX
+      if (y < minY) y = minY
+      if (y > maxY) y = maxY
+
+      this.floatPos = { x, y }
+    },
+    onTouchEnd(e) {
+      const touch = (e.changedTouches && e.changedTouches[0]) || null
+      // 判断是否为点击（位移小于 10px）
+      let isClick = false
+      if (touch) {
+        const dx = touch.clientX - this.floatTouchStart.x
+        const dy = touch.clientY - this.floatTouchStart.y
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+          isClick = true
+        }
+      }
+      // 边缘吸附
+      const midX = (this.sysInfo.windowWidth || 375) / 2
+      const btnSize = 50
+      const margin = 24
+      if (this.floatPos.x + btnSize / 2 < midX) {
+        this.floatPos = { ...this.floatPos, x: margin }
+      } else {
+        this.floatPos = {
+          ...this.floatPos,
+          x: (this.sysInfo.windowWidth || 375) - btnSize - margin
+        }
+      }
+      this.floatDragging = false
+
+      if (isClick) {
+        this.goToChat()
+      }
+    },
+    goToChat() {
+      // 默认点击悬浮按钮：新开对话
+      uni.navigateTo({ url: '/pages/ai/chat?sessionId=new' })
+    },
+    newChat() {
+      uni.navigateTo({ url: '/pages/ai/chat?sessionId=new' })
+    },
+    continueChat(sessionId) {
+      uni.navigateTo({ url: `/pages/ai/chat?sessionId=${sessionId}` })
+    },
+    async loadChatSessions() {
+      // 后端优先
+      try {
+        const res = await fetchBackendSessions({ page: 1, page_size: 50 })
+        const items = (res && res.items) || []
+        // 转为统一展示结构
+        const backendList = items.map(it => ({
+          id: it.id,
+          title: it.title,
+          messageCount: it.message_count,
+          updatedAt: it.updated_at,
+          source: 'backend'
+        }))
+        // 合并本地未同步的会话（local- 前缀）
+        const localOnly = this.loadLocalSessions().filter(s => !this.existsInList(backendList, s.id))
+        this.chatSessions = [...backendList, ...localOnly].sort((a, b) => {
+          return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)
+        })
+        return
+      } catch (e) {
+        console.warn('后端加载对话列表失败，降级本地:', e)
+      }
+      // 降级到本地
+      this.chatSessions = this.loadLocalSessions()
+    },
+    loadLocalSessions() {
+      try {
+        const stored = uni.getStorageSync(LOCAL_SESSIONS_KEY)
+        if (Array.isArray(stored)) return stored
+      } catch (e) {}
+      return []
+    },
+    existsInList(list, id) {
+      return list.some(it => String(it.id) === String(id))
+    },
+    sessionMessageCount(s) {
+      // 后端来源：直接使用 messageCount
+      if (s.source === 'backend' && typeof s.messageCount === 'number') {
+        return s.messageCount
+      }
+      // 本地来源：使用 messages 数组长度
+      return (s.messages || []).length
+    },
+    confirmDeleteSession(session) {
+      uni.showModal({
+        title: '删除对话',
+        content: `确定要删除对话"${session.title || '新对话'}"吗？`,
+        success: async (res) => {
+          if (res.confirm) {
+            await this.deleteSession(session)
+          }
+        }
+      })
+    },
+    async deleteSession(session) {
+      // 后端删除
+      if (session.source === 'backend' || typeof session.id === 'number') {
+        try {
+          await deleteBackendSession(session.id)
+        } catch (e) {
+          console.warn('后端删除对话失败:', e)
+        }
+      }
+      // 本地同步删除
+      const filtered = this.loadLocalSessions().filter(s => String(s.id) !== String(session.id))
+      try {
+        uni.setStorageSync(LOCAL_SESSIONS_KEY, filtered)
+      } catch (e) {
+        console.error('删除本地对话失败', e)
+      }
+      // 立即从列表中移除
+      this.chatSessions = this.chatSessions.filter(s => String(s.id) !== String(session.id))
+      uni.showToast({ title: '已删除', icon: 'success' })
+    },
     async loadHistory() {
       try {
         const res = await getAIRecords({ page: 1, page_size: 5 })
@@ -227,6 +450,11 @@ export default {
   color: #909399;
 }
 
+.section-more.new-btn {
+  color: #667eea;
+  font-weight: 500;
+}
+
 .steps {
   background: #fff;
   border-radius: 20rpx;
@@ -309,5 +537,129 @@ export default {
 .history-time {
   font-size: 24rpx;
   color: #909399;
+}
+
+/* 对话会话列表 */
+.session-list {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 20rpx;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx;
+  border-bottom: 1rpx solid #f5f5f5;
+}
+
+.session-item:last-child {
+  border-bottom: none;
+}
+
+.session-item:active {
+  background: #f8f8f8;
+}
+
+.session-icon {
+  width: 72rpx;
+  height: 72rpx;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+
+.session-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.session-title {
+  font-size: 30rpx;
+  color: #303133;
+  display: block;
+  margin-bottom: 8rpx;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  font-size: 24rpx;
+  color: #909399;
+}
+
+.session-delete {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 12rpx;
+  border-radius: 12rpx;
+  flex-shrink: 0;
+}
+
+.session-delete:active {
+  background: #FEE2E2;
+}
+
+.delete-icon {
+  font-size: 30rpx;
+}
+
+/* 悬浮机器人按钮 */
+.float-bot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(102, 126, 234, 0.4);
+  z-index: 999;
+  will-change: transform;
+}
+
+.float-icon {
+  font-size: 52rpx;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.float-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 50%;
+  background: rgba(102, 126, 234, 0.4);
+  animation: pulse 2s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
 }
 </style>

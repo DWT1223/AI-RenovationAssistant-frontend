@@ -10,7 +10,20 @@
           </view>
         </view>
 
-        <view class="user-info-row">
+        <view v-if="!isLogin" class="guest-login-row" @click="goToLogin">
+          <view class="avatar-container">
+            <view class="avatar avatar-default">
+              <text class="avatar-text">U</text>
+            </view>
+          </view>
+          <view class="guest-login-content">
+            <text class="guest-login-title">登录后享受更多服务</text>
+            <text class="guest-login-subtitle">登录 / 注册</text>
+          </view>
+          <text class="guest-login-arrow">›</text>
+        </view>
+
+        <view v-else class="user-info-row">
           <view class="avatar-container">
             <image v-if="userInfo.avatar" :src="userInfo.avatar" class="avatar" mode="aspectFill"></image>
             <view v-else class="avatar avatar-default">
@@ -228,6 +241,9 @@ export default {
       }
       uni.navigateTo({ url })
     },
+    goToLogin() {
+      uni.navigateTo({ url: '/pages/user/login' })
+    },
     goToSettings() {
       uni.showToast({ title: '设置功能开发中', icon: 'none' })
     },
@@ -302,6 +318,36 @@ export default {
   display: flex;
   align-items: center;
   padding: 24rpx 0;
+}
+
+.guest-login-row {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 0;
+}
+
+.guest-login-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.guest-login-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 12rpx;
+}
+
+.guest-login-subtitle {
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.guest-login-arrow {
+  font-size: 56rpx;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .avatar-container {
