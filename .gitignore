@@ -1,0 +1,62 @@
+# 依赖
+node_modules/
+jspm_packages/
+.pnpm-store/
+
+# 构建产物
+dist/
+build/
+unpackage/
+unpackage-dist/
+
+# uni-app 编译输出
+**/unpackage/
+**/node_modules/
+
+# HBuilderX / uni-app IDE 配置
+.hbuilderx/
+.hx/
+project.private.config.json
+
+# 缓存
+.cache/
+.parcel-cache/
+.npm/
+.yarn/
+.pnp.*
+.eslintcache
+.stylelintcache
+
+# 测试覆盖率
+coverage/
+*.lcov
+
+# 日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+logs/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 用户上传 / 临时文件
+uploads/
+static/temp/
