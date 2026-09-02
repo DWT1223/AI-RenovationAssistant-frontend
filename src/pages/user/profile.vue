@@ -61,12 +61,12 @@
           <view class="stat-divider"></view>
 
           <!-- AI历史 -->
-          <view class="stat-item" @click="goTo('/pages/ai/index')">
+          <view class="stat-item" @click="goTo('/pages/ai/chatHistory')">
             <view class="stat-icon purple-gradient">
               <text class="stat-icon-text">🤖</text>
             </view>
             <view class="stat-content">
-              <text class="stat-label">AI历史</text>
+              <text class="stat-label">AI历史会话</text>
             </view>
           </view>
 
